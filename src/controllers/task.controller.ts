@@ -1,8 +1,7 @@
-import { Request, Response } from "express";
+import {Response } from "express";
 import prisma from "../config/prisma.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { AppError } from "../utils/AppError.js";
-// import { getTaskQuerySchema, updateTaskSchema } from "../validations/auth.validations.js";
 import { Prisma, TaskStatus} from "@prisma/client";
 import { Req } from "../types/express.js"; 
 
@@ -183,7 +182,7 @@ if (!req.membership||!["ADMIN", "MEMBER"].includes(req.membership.role)) {
                 },
                 attachments:
                 {
-                    select:{id:true,url:true,fileType:true}
+                    select:{id:true,fileUrl:true,fileType:true}
                 }
             }
     })
@@ -200,81 +199,77 @@ if (!req.membership||!["ADMIN", "MEMBER"].includes(req.membership.role)) {
 
 
 
- export const updateTask=asyncHandler(async(req:Req,res:Response)=>{
+export const updateTask = asyncHandler(async (req: Req, res: Response) => {
   const { taskId, workspaceId } = req.params;
+  const userId = req.user!.id;
+  const { title, description, status, priority, assigneeId } = req.body;
 
-
-    const userId=req.user!.id;
-// Validation (Hinglish: Validate middleware req.body ko pehle hi clean kar chuka hai)
-    const { title, description, status, priority, assigneeId } = req.body;
-
-    if(!req.membership || !['ADMIN' ,'MEMBER'].includes(req.membership.role)){
+  if (!req.membership || !['ADMIN', 'MEMBER'].includes(req.membership.role)) {
     throw new AppError("Insufficient permissions", 403);
-    }
+  }
 
-    const existingTask=await prisma.task.findFirst({
-        where:{
-            id:taskId,
-            workspaceId:workspaceId,
-            deletedAt:null,
-        }
-    })
-
-   if(!existingTask) throw new AppError("Task not found in this workspace",404)
-
-    if(assigneeId){
-    const isMember = await prisma.workspaceMember.findUnique({
-        where:{
-            workspaceId_userId:{
-                workspaceId,
-                userId:assigneeId
-            }
-        }
-    })
-    
-      if(!isMember){
-        throw new AppError("Assignee must be a member of this workspace",404)
+  // Fetch existing task with predecessors (for status check)
+  const existingTask = await prisma.task.findFirst({
+    where: { id: taskId, workspaceId, deletedAt: null },
+    include: {
+      predecessors: {
+        where: { deletedAt: null },
+        select: { status: true }
       }
-}
+    }
+  });
 
+  if (!existingTask) throw new AppError("Task not found in this workspace", 404);
 
-const result=await prisma.$transaction(async(tx)=>{
+  // If assigneeId is being updated, verify workspace membership
+  if (assigneeId !== undefined) {
+    if (assigneeId) {
+      const isMember = await prisma.workspaceMember.findUnique({
+        where: { workspaceId_userId: { workspaceId, userId: assigneeId } }
+      });
+      if (!isMember) {
+        throw new AppError("Assignee must be a member of this workspace", 404);
+      }
+    }
+  }
 
-    const updatedTask=await tx.task.update({
-        where:{id:taskId},
-        data:{
-           title:title??undefined,
-           description:description??undefined,
-           priority: priority ?? undefined,
+  // 🔥 DEPENDENCY CHECK: If status is being changed to IN_PROGRESS or COMPLETED, ensure no unfinished predecessors
+  if (status && (status === "IN_PROGRESS" || status === "COMPLETED")) {
+    const hasUnfinishedPredecessor = existingTask.predecessors.some(p => p.status !== "COMPLETED");
+    if (hasUnfinishedPredecessor) {
+      throw new AppError("Task is blocked by unfinished dependencies", 400);
+    }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedTask = await tx.task.update({
+      where: { id: taskId },
+      data: {
+        title: title ?? undefined,
+        description: description ?? undefined,
+        priority: priority ?? undefined,
         status: status ?? undefined,
-           assigneeId:assigneeId??undefined, 
-        }
-    })
-
+        assigneeId: assigneeId ?? undefined,
+      }
+    });
 
     await tx.activityLog.create({
-        data:{
-            workspaceId,
-            taskId,
-            userId,
-            action:"UPDATE_TASK",
-            field:status? "status" :priority ?"priority":"details",
-            oldValue:existingTask.status,
-            newValue:status || existingTask.status
-        }
-    })
+      data: {
+        workspaceId,
+        taskId,
+        userId,
+        action: "UPDATE_TASK",
+        field: status ? "status" : priority ? "priority" : "details",
+        oldValue: existingTask.status,
+        newValue: status || existingTask.status
+      }
+    });
 
-    return updatedTask
+    return updatedTask;
+  });
 
-})
-
-
-        res.status(200).json({
-            success:true,
-            data:result
-        })
-
-})
+  res.status(200).json({ success: true, data: result });
+});
 
 
 
@@ -311,7 +306,7 @@ export const deleteTask=asyncHandler(async(req:Req,res:Response)=>{
                 workspaceId,
                 userId,
                 taskId,
-                action:"DELTE_TASK",
+                action:"DELETE_TASK",
                 field:"deletedAt",
                 newValue:new Date().toISOString()
             }
@@ -329,64 +324,64 @@ export const deleteTask=asyncHandler(async(req:Req,res:Response)=>{
 
 
 
-export const changeTaskStatus=asyncHandler(async(req:Req,res:Response)=>{
+export const changeTaskStatus = asyncHandler(async (req: Req, res: Response) => {
   const { taskId, workspaceId } = req.params;
+  const { status: newStatus } = req.body;
+  const userId = req.user!.id;
 
-
-  const { status: newStatus } = req.body; 
-
-
-const userId=req.user!.id;
-
-  if(!req.membership || !['ADMIN' ,'MEMBER'].includes(req.membership.role)){
+  if (!req.membership || !['ADMIN', 'MEMBER'].includes(req.membership.role)) {
     throw new AppError("Insufficient permissions", 403);
+  }
+
+  // Fetch task with its predecessors to check blocked status
+  const task = await prisma.task.findFirst({
+    where: { id: taskId, workspaceId, deletedAt: null },
+    include: {
+      predecessors: {
+        where: { deletedAt: null },
+        select: { status: true }
+      }
     }
+  });
 
-    const task=await prisma.task.findFirst({
-        where:{
-            id:taskId,
-            workspaceId,
-            deletedAt:null
-        }
-    })
+  if (!task) throw new AppError("Task Not Found", 404);
 
-    if(!task) throw new AppError("Task Not Found",404);
-
-//Ensure karo ki status wahi ho jo humare Enum mein hai
+  // Validate status enum
   if (!Object.values(TaskStatus).includes(newStatus as TaskStatus)) {
     throw new AppError("Invalid status value provided", 400);
   }
 
-  const result=await prisma.$transaction(async(tx)=>{
-    const updatedTask=await tx.task.update({
-        where:{id:taskId},
-        data:{
-            status: newStatus as TaskStatus // Type casting as Enum
-        }
-    })
+  // 🔥 DEPENDENCY CHECK: If moving to IN_PROGRESS or COMPLETED, ensure no unfinished predecessors
+  if (newStatus === "IN_PROGRESS" || newStatus === "COMPLETED") {
+    const hasUnfinishedPredecessor = task.predecessors.some(p => p.status !== "COMPLETED");
+    if (hasUnfinishedPredecessor) {
+      throw new AppError("Task is blocked by unfinished dependencies", 400);
+    }
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedTask = await tx.task.update({
+      where: { id: taskId },
+      data: { status: newStatus as TaskStatus }
+    });
 
     await tx.activityLog.create({
-      data:{
-          workspaceId,
-          taskId,
-          userId,
-          action:"UPDATE_STATUS",
-          field:"status",
-          oldValue:task.status,
-          newValue:newStatus
+      data: {
+        workspaceId,
+        taskId,
+        userId,
+        action: "UPDATE_STATUS",
+        field: "status",
+        oldValue: task.status,
+        newValue: newStatus
       }
-    })
+    });
 
-    return updatedTask
-  })
+    return updatedTask;
+  });
 
-
-res.status(200).json({
-    success:true,
-    data:result
-})
-
-})
+  res.status(200).json({ success: true, data: result });
+});
 
 
 export const assignTask=asyncHandler(async(req:Req,res:Response)=>{

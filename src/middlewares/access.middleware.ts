@@ -25,7 +25,6 @@ export const authorize = asyncHandler(
       throw new AppError("Access denied", 403);
     }
 
-    // Cross-tenant guard
     if (
       projectId &&
       workspaceId &&

@@ -4,40 +4,29 @@ import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
-export const protect = asyncHandler(
-  async (req: Request, _res: Response, next: NextFunction) => {
-    let token: string | undefined;
+import { verifyAccessToken } from "../utils/auth/token.utils.js";
 
-    const authHeader = req.headers.authorization;
+export const protect = asyncHandler(async (req, _res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
 
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.split(" ")[1];
-    }
+  if (!token) throw new AppError("Unauthorized", 401);
 
-    if (!token) {
-      throw new AppError("Not authorized. Please login.", 401);
-    }
+  const decoded = verifyAccessToken(token);
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET as string
-    ) as { id: string };
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.sub },
+  });
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        createdAt: true,
-      },
-    });
+  if (!user) throw new AppError("User not found", 401);
 
-    if (!user) {
-      throw new AppError("User no longer exists", 401);
-    }
-
-    req.user = user as any;
-    next();
+  if (user.tokenVersion !== decoded.tv) {
+    throw new AppError("Session expired", 401);
   }
-);
+
+  if (!user.isVerified) {
+    throw new AppError("Email not verified", 403);
+  }
+
+  req.user = user;
+  next();
+});

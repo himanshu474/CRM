@@ -49,5 +49,7 @@ export const getResourceAccess = async (userId: string, workspaceId?: string, pr
  // Role Enforcement (Admin Only)
  
 export const requireAdmin = (role: string) => {
-    if (role !== "ADMIN") throw new AppError("Forbidden: Admin access required", 403);
+  if (role !== "ADMIN") {
+    throw new AppError("Admin access required", 403);
+  }
 };

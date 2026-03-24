@@ -1,24 +1,40 @@
+import { ParamsDictionary } from "express-serve-static-core";
 import { User, WorkspaceMember, Project } from "@prisma/client";
-import { Request } from "express";
 
-// 1. Common Params ko strictly string define karein
-export interface CustomParams {
-  workspaceId: string;
-  projectId: string;
-  taskId: string;
-  [key: string]: string;
+/**
+ * 1. Extend ParamsDictionary to satisfy Express's internal requirements
+ */
+export interface CustomParams extends ParamsDictionary {
+  workspaceId?: string;
+  projectId?: string;
+  taskId?: string;
+  dependsOnTaskId?: string;
+    attachmentId?: string; a
 }
 
-// 2. Global Request ko extend karein (user, membership ke liye)
+/**
+ * 2. Extend Express Request globally
+ */
 declare global {
   namespace Express {
     interface Request {
-      user?: User;
+      user?: {
+        id: string;
+        email: string;
+        name: string;
+        tokenVersion: number;
+        isVerified: boolean;
+      };
       membership?: WorkspaceMember;
       project?: Project;
     }
   }
 }
 
-// 3. Yeh hai Magic Type: Isko har controller mein 'Request' ki jagah use karein
-export type Req<B = any, Q = any> = Request<CustomParams, any, B, Q>;
+/**
+ * 3. THE MAIN TYPE (Used in Controllers)
+ * We use 'any' as the default for Body (B) and Query (Q) 
+ * unless you provide a specific Zod type.
+ */
+import { Request as ExpressRequest } from "express";
+export type Req<B = any, Q = any> = ExpressRequest<CustomParams, any, B, Q>;

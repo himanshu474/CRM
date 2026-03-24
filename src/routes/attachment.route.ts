@@ -12,7 +12,7 @@ import {
   uploadAttachmentSchema,
   getTaskAttachmentsSchema,
   deleteAttachmentSchema,
-} from "../validations/auth.validations.js";
+} from "../validations/attachment.validations.js";
 
 const router = Router();
 

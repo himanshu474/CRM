@@ -9,10 +9,12 @@ export const globalErrorHandler = (
   res: Response,
   _next: NextFunction
 ) => {
-  // Production mein console.error ki jagah ek logger (pino/winston) use karna chahiye
-  console.error("ERROR:", err);
+  // Use a logger like Pino or Winston here in the future
+  if (process.env.NODE_ENV === "development") {
+    console.error("DEBUG ERROR 💥:", err);
+  }
 
-  // 1. Custom AppError (Jo aapne controllers mein 'throw' kiya hai)
+  // 1. Operational Errors (AppError)
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
@@ -20,7 +22,7 @@ export const globalErrorHandler = (
     });
   }
 
-  // 2. Zod Validation Error (Fix: Use .issues instead of .errors)
+  // 2. Zod Validation (Your logic is perfect here)
   if (err instanceof ZodError) {
     return res.status(400).json({
       success: false,
@@ -32,24 +34,24 @@ export const globalErrorHandler = (
     });
   }
 
-  // 3. Prisma Errors (Unique constraint violation)
- if (err.code === "P2002") {
-  const target = (err.meta?.target as string[])?.join(", ") || "Record";
-  return res.status(409).json({
-    success: false,
-    message: `${target} already exists.`,
-  });
-}
+  // 3. Prisma Unique Constraint (e.g., Email already exists)
+  if (err.code === "P2002") {
+    const field = (err.meta?.target as string[])?.join(", ") || "Field";
+    return res.status(409).json({
+      success: false,
+      message: `${field} already exists.`,
+    });
+  }
 
   // 4. Prisma Record Not Found
   if (err.code === "P2025") {
-  return res.status(404).json({
-    success: false,
-    message: err.meta?.cause || "Record not found",
-  });
-}
+    return res.status(404).json({
+      success: false,
+      message: "Resource not found or already deleted.",
+    });
+  }
 
-  // 5. JWT Authentication Errors
+  // 5. JWT Errors (Caught automatically from your protect middleware)
   if (err.name === "JsonWebTokenError") {
     return res.status(401).json({
       success: false,
@@ -64,20 +66,20 @@ export const globalErrorHandler = (
     });
   }
 
+  // 6. Multer Errors
   if (err instanceof MulterError) {
-  const message = err.code === 'LIMIT_FILE_SIZE' 
-    ? 'File is too large (max 5MB)' 
-    : `Upload error: ${err.message}`;
-    
-  return res.status(400).json({
-    success: false,
-    message,
-  });
-}
+    return res.status(400).json({
+      success: false,
+      message: err.code === "LIMIT_FILE_SIZE" ? "File too large (Max 5MB)" : err.message,
+    });
+  }
 
-  // 6. Default Fallback (Anjaan galtiyon ke liye)
+  // 7. Final Fallback
   return res.status(500).json({
     success: false,
-    message: "Something went very wrong!",
+    message: process.env.NODE_ENV === "development" ? err.message : "Internal Server Error",
+    // Only show stack trace in dev
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 };
+

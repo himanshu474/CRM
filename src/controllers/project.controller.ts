@@ -1,14 +1,12 @@
-import { Request, Response } from "express";
-import prisma from "../config/prisma.js";
+import { Response } from "express";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { ProjectService } from "../services/project.service.js";
+import { Req } from "../types/express.js";
+import { WorkspaceRole } from "@prisma/client";
 import { AppError } from "../utils/AppError.js";
-import { Req } from "../types/express.js"; // Import your new 'Req'
-import { WorkspaceRole } from "@prisma/client"; // Use Prisma Enums, not strings
-
 
  //Create Project
 export const createProject = asyncHandler(async (req: Req, res: Response) => {
-  const { name, description } = req.body;
     const { workspaceId } = req.params; 
 
 
@@ -16,26 +14,11 @@ export const createProject = asyncHandler(async (req: Req, res: Response) => {
     throw new AppError("Forbidden:Insufficient permissions", 403);
   }
 
-  const workspace = await prisma.workspace.findFirst({
-    where: { id: workspaceId, deletedAt: null },
-  });
-
-  if (!workspace) {
-    throw new AppError("Workspace not found", 404);
-  }
-
-  const project = await prisma.project.create({
-    data: {
-      name,
-      description: description ?? null,
-      workspaceId,
-      ownerId: req.user!.id,
-    },
-  });
+    const data = await ProjectService.create(workspaceId!, req.user!.id, req.body);
 
   res.status(201).json({
     success: true,
-    data: project,
+    data,
   });
 });
 
@@ -49,24 +32,12 @@ export const getWorkspaceProjects = asyncHandler(async (req: Req, res: Response)
     throw new AppError("Access denied", 403);
   }
 
-  const projects = await prisma.project.findMany({
-    where: {
-      workspaceId,
-      deletedAt: null,
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      name: true,
-      description: true,
-      createdAt: true,
-    },
-  });
+   const data = await ProjectService.getAll(workspaceId!);
 
   res.json({
     success: true,
-    count: projects.length,
-    data: projects,
+    count: data.length,
+    data,
   });
 });
 
@@ -74,39 +45,27 @@ export const getWorkspaceProjects = asyncHandler(async (req: Req, res: Response)
  // Delete Project (Hardcore Soft Delete)
  
 export const deleteProject = asyncHandler(async (req: Req, res: Response) => {
-    const { projectId, workspaceId } = req.params; 
+  const { projectId, workspaceId } = req.params;
+  const userId = req.user!.id;
 
+  // 1. Permission Guard (Controller's responsibility)
   if (!req.membership || req.membership.role !== WorkspaceRole.ADMIN) {
-    throw new AppError("Admin required", 403);
+    throw new AppError("Forbidden: Admin privileges required to delete projects", 403);
   }
 
-  const project = await prisma.project.findFirst({
-    where: { id: projectId,workspaceId, deletedAt: null },
-  });
+  // 2. Delegate Business Logic to Service
+  // The service handles: finding the project, checking workspace ownership, 
+  // the transaction for tasks, and creating the audit log.
+  await ProjectService.delete(
+    workspaceId!, 
+    projectId!, 
+    userId
+  );
 
-  if (!project) {
-    throw new AppError("Project not found", 404);
-  }
-
-  const now = new Date();
-
-  await prisma.$transaction([
-    prisma.project.update({
-      where: { id: projectId},
-      data: { deletedAt: now },
-    }),
-    prisma.task.updateMany({
-      where: { projectId, workspaceId, deletedAt: null },
-      data: { deletedAt: now },
-    }),
-      prisma.activityLog.create({
-        data: { workspaceId, action: "DELETE_PROJECT", newValue: project.name, userId: req.user!.id }
-    })
-  ]);
-
+  // 3. Send final response
   res.json({
     success: true,
-    message: "Project moved to trash",
+    message: "Project and associated tasks moved to trash successfully",
   });
 });
 
@@ -116,28 +75,11 @@ export const deleteProject = asyncHandler(async (req: Req, res: Response) => {
 export const updateProject = asyncHandler(async (req: Req, res: Response) => {
     const { projectId, workspaceId } = req.params;
 
-  const { name, description } = req.body;
-
   if (!req.membership || req.membership.role !== WorkspaceRole.ADMIN) {
     throw new AppError("Admin required", 403);
   }
 
-  const project = await prisma.project.findFirst({
-    where: { id: projectId,workspaceId, deletedAt: null },
-  });
-
-  if (!project) {
-    throw new AppError("Project not found", 404);
-  }
-
-  const updated = await prisma.project.update({
-    where: { id: projectId },
-    data: {
-      name:name??undefined,
-      description :description??undefined,
-    },
-  });
-
+  const updated = await ProjectService.update(workspaceId!, projectId!, req.body, req.user!.id);
   res.json({
     success: true,
     data: updated,
@@ -148,40 +90,26 @@ export const updateProject = asyncHandler(async (req: Req, res: Response) => {
 //restore project
 
 export const restoreProject = asyncHandler(async (req: Req, res: Response) => {
-  const { projectId, workspaceId } = req.params;
+  const { workspaceId, projectId } = req.params;
+  const userId = req.user!.id;
 
-
+  // 1. Permission Guard: Only Admins can restore
   if (!req.membership || req.membership.role !== WorkspaceRole.ADMIN) {
-    throw new AppError("Admin required", 403);
+    throw new AppError("Forbidden: Only workspace admins can restore projects", 403);
   }
 
-  await prisma.$transaction([
-    prisma.project.update({
-      where: { id: projectId }
-      ,
-      data: { deletedAt: null },
-      
-    }),
-    prisma.task.updateMany({
-      where: { projectId,workspaceId ,
-                //Sirf wahi tasks restore karo jo project ke saath delete huye the
-                deletedAt: { not: null } 
-      },
-      data: { deletedAt: null },
-    }),
-    prisma.activityLog.create({
-        data: { 
-          workspaceId, 
-          action: "RESTORE_PROJECT", 
-          userId: req.user!.id,
-          field: "deletedAt",
-          newValue: "null"
-        }
-    })
-  ]);
+  // 2. Delegate Business Logic to Service
+  // The service handles: verification, project update, task bulk update, and audit log.
+  const data = await ProjectService.restore(
+    workspaceId!,
+    projectId!,
+    userId
+  );
 
+  // 3. Send Success Response
   res.json({
     success: true,
-    message: "Project restored successfully",
+    message: "Project and associated tasks restored successfully",
+    data, // Optional: returns the restored project object
   });
 });

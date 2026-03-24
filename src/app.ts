@@ -1,49 +1,61 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import cookieParser from "cookie-parser";
 
-// Routes imports
-import userRoutes from "./routes/user.routes.js";
+// Route Imports
+import authRoutes from "./routes/auth.route.js";
 import workspaceRoutes from "./routes/workspace.route.js";
 import projectRoutes from "./routes/project.route.js";
 import taskRoutes from "./routes/task.route.js"; 
 import activityRoutes from "./routes/activity.route.js"; 
-import attachmentRoutes from "./routes/attachment.route.js"
+import attachmentRoutes from "./routes/attachment.route.js";
+import taskDependencyRoutes from "./routes/dependency.route.js";
+import companyRoutes from "./routes/company.route.js";
+import contactRoutes from "./routes/contact.route.js";
+import dealRoutes from "./routes/deal.route.js";
+
 import { globalErrorHandler } from "./middlewares/error.middleware.js";
 import { AppError } from "./utils/AppError.js";
 
 const app = express();
 
-// 1. Middlewares
+// 1. GLOBAL MIDDLEWARES
 app.use(helmet());
-app.use(cors());
+app.use(cookieParser());
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  credentials: true 
+}));
 app.use(express.json());
 
-// 2. Routes Mounting
-app.use("/api/users", userRoutes); 
+// 2. ROUTES MOUNTING
+app.use("/api/users", authRoutes); 
 app.use("/api/workspaces", workspaceRoutes); 
-/** 
- * IMPORTANT: We mount Project, Task, and Activity under /api/workspaces.
- * This means every route in these files will START with /api/workspaces.
- * Example: /api/workspaces/:workspaceId/projects
- */
+
+// Workspace Sub-Resources
 app.use("/api/workspaces", projectRoutes);
 app.use("/api/workspaces", taskRoutes); 
 app.use("/api/workspaces", activityRoutes); 
-app.use("/api", attachmentRoutes);  // <-- add this line
+app.use("/api/workspaces", attachmentRoutes);  
+app.use("/api/workspaces", taskDependencyRoutes);
 
+// CRM Specific Resources
+app.use("/api/workspaces", companyRoutes);
+app.use("/api/workspaces", contactRoutes);
+app.use("/api/workspaces", dealRoutes);
 
-//  Health Check
+// 3. HEALTH CHECK
 app.get("/health", (req, res) => {
-    res.json({ status: "success", message: "Server running successfully!" });
+    res.json({ status: "success", message: "CRM Server is healthy!" });
 });
 
-// Hamesha saari routes ke BAAD rakhein
-app.use((req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+// 4. 404 HANDLER
+app.all("*", (req, res, next) => {
+  next(new AppError(`Route ${req.originalUrl} not found!`, 404));
 });
 
-//Global Error Handler (ONLY ONCE & AT THE END)
+// 5. GLOBAL ERROR HANDLER
 app.use(globalErrorHandler);
 
 export default app;
