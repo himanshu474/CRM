@@ -7,40 +7,45 @@ import {
 // Middlewares
 import { protect } from "../middlewares/auth.middleware.js";
 import { authorize } from "../middlewares/access.middleware.js";
-import { validate } from "../middlewares/validate.js";
+import { validate } from "../middlewares/validate.middleware.js";
 
 // Validations
 import { 
     getTaskActivityLogSchema, 
     getWorkspaceActivityLogSchema 
-} from "../validations/auth.validations.js";
+} from "../validations/activityLog.validations.js";
 
-const router = Router();
+/**
+ * mergeParams: true is essential if this is mounted under a parent 
+ * workspace router to access :workspaceId.
+ */
+const router = Router({ mergeParams: true });
 
-// Sabhi activity routes ke liye login check
+//All activity routes require a valid session
 router.use(protect);
 
 /**
- * 1. GET TASK SPECIFIC ACTIVITIES (TIMELINE)
+ * TASK TIMELINE (History of a single task)
+ * Access: ADMIN or MEMBER of the workspace.
  * URL: GET /api/workspaces/:workspaceId/tasks/:taskId/activities
  */
 router.get(
-  "/:workspaceId/tasks/:taskId/activities", // Removed redundant '/workspaces' and '/activity'
+  "/tasks/:taskId/activities",
   validate(getTaskActivityLogSchema),
-  authorize,
+  authorize, // Fetches req.membership and validates ownership
   getTaskActivityLogs
 );
 
 /**
- * 2. GET WORKSPACE ACTIVITY LOGS (AUDIT LOG)
+ * WORKSPACE AUDIT LOG (Full activity feed)
+ * Access: ADMIN ONLY (Enforced inside the controller).
  * URL: GET /api/workspaces/:workspaceId/activities
  */
 router.get(
-  "/:workspaceId/activities", // Simple & clean path
+  "/activities",
   validate(getWorkspaceActivityLogSchema),
-  authorize,
+  authorize, // Fetches req.membership
   getWorkspaceActivityLog
 );
 
 export default router;
-

@@ -1,15 +1,18 @@
-import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+// src/middlewares/auth.middleware.ts
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
-
+import { asyncHandler } from "../utils/common/asyncHandler.js";
 import { verifyAccessToken } from "../utils/auth/token.utils.js";
+import { Req } from "../types/express.js";
 
-export const protect = asyncHandler(async (req, _res, next) => {
-  const token = req.headers.authorization?.split(" ")[1];
+export const protect = asyncHandler(async (req: Req, _res, next) => {
+  const authHeader = req.headers.authorization;
 
-  if (!token) throw new AppError("Unauthorized", 401);
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    throw new AppError("Unauthorized", 401);
+  }
+
+  const token = authHeader.split(" ")[1];
 
   const decoded = verifyAccessToken(token);
 
@@ -28,5 +31,6 @@ export const protect = asyncHandler(async (req, _res, next) => {
   }
 
   req.user = user;
+
   next();
 });

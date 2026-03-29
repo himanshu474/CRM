@@ -1,24 +1,24 @@
-import multer from 'multer';
-import { AppError } from '../utils/AppError.js';
+// src/middlewares/upload.middleware.ts
+import multer from "multer";
+import { AppError } from "../utils/AppError.js";
 
 const storage = multer.memoryStorage();
 
+const allowedTypes = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+];
+
 export const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, 
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'image/png',
-      'image/jpeg',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new AppError('Invalid file type. Only PDF, PNG, JPG, and DOC allowed.', 400));
+    if (!allowedTypes.includes(file.mimetype)) {
+      return cb(new AppError("Invalid file type", 400));
     }
+    cb(null, true);
   },
 });

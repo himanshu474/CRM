@@ -12,7 +12,7 @@ if (!supabaseUrl || !serviceRoleKey) {
 }
 
 /**
- * Singleton Supabase Client
+ * Singleton Supabaase Client
  *  NEVER expose this to frontend
  */
 export const supabaseClient = createClient(supabaseUrl, serviceRoleKey, {

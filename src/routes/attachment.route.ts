@@ -6,7 +6,7 @@ import {
 } from "../controllers/attachment.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { authorize } from "../middlewares/access.middleware.js";
-import { validate } from "../middlewares/validate.js";
+import { validate } from "../middlewares/validate.middleware.js";
 import { upload } from "../middlewares/upload.middleware.js"; // your multer config
 import {
   uploadAttachmentSchema,

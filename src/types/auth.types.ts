@@ -10,8 +10,8 @@ export interface JwtPayload {
 }
 
 export interface TokenUser {
-  id: string;
-  tokenVersion: number;
+  sub: string;
+  tv: number;
 }
 
 export interface AuthenticatedUser {

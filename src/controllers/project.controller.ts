@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { asyncHandler } from "../utils/common/asyncHandler.js";
 import { ProjectService } from "../services/project.service.js";
 import { Req } from "../types/express.js";
 import { WorkspaceRole } from "@prisma/client";

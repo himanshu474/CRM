@@ -4,7 +4,8 @@ import { hasCycle } from "../utils/dependency.util.js";
 import { logAuditEvent } from "../utils/security/audit.utils.js";
 
 /**
- * Add dependency
+ * Add Task Dependency
+ * Logic: Checks for self-dependency, existence, duplicates, and circular references.
  */
 export const addDependencyService = async (
   workspaceId: string,
@@ -16,61 +17,17 @@ export const addDependencyService = async (
     throw new AppError("Task cannot depend on itself", 400);
   }
 
+  // Verify both tasks exist and aren't deleted
   const [task, dependsOnTask] = await Promise.all([
-    prisma.task.findUnique({ where: { id: taskId, workspaceId } }),
-    prisma.task.findUnique({ where: { id: dependsOnTaskId, workspaceId } }),
+    prisma.task.findFirst({ where: { id: taskId, workspaceId, deletedAt: null } }),
+    prisma.task.findFirst({ where: { id: dependsOnTaskId, workspaceId, deletedAt: null } }),
   ]);
 
-  if (!task || !dependsOnTask) {
-    throw new AppError("Task not found", 404);
-  }
+  if (!task || !dependsOnTask) throw new AppError("Task not found", 404);
 
-  const existing = await prisma.taskDependency.findUnique({
-    where: {
-      predecessorId_successorId: {
-        predecessorId: dependsOnTaskId,
-        successorId: taskId,
-      },
-    },
-  });
-
-  if (existing) throw new AppError("Dependency exists", 400);
-
-  const cycle = await hasCycle(dependsOnTaskId, taskId);
-  if (cycle) throw new AppError("Circular dependency", 400);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.taskDependency.create({
-      data: {
-        predecessorId: dependsOnTaskId,
-        successorId: taskId,
-      },
-    });
-
-    await logAuditEvent(
-      {
-        workspaceId,
-        userId,
-        taskId,
-        action: "DEPENDENCY_ADDED",
-        metadata: { dependsOnTaskId },
-      },
-      tx
-    );
-  });
-};
-
-/**
- * Remove dependency
- */
-export const removeDependencyService = async (
-  workspaceId: string,
-  taskId: string,
-  dependsOnTaskId: string,
-  userId: string
-) => {
-  await prisma.$transaction(async (tx) => {
-    await tx.taskDependency.delete({
+  return prisma.$transaction(async (tx) => {
+    // 2. Duplicate Check
+    const existing = await tx.taskDependency.findUnique({
       where: {
         predecessorId_successorId: {
           predecessorId: dependsOnTaskId,
@@ -78,75 +35,143 @@ export const removeDependencyService = async (
         },
       },
     });
+    if (existing) throw new AppError("Dependency already exists", 400);
 
-    await logAuditEvent(
-      {
-        workspaceId,
-        userId,
-        taskId,
-        action: "DEPENDENCY_REMOVED",
-        metadata: { dependsOnTaskId },
-      },
-      tx
-    );
+    // 3. Circular Reference Check (Pass tx for consistency)
+    const cycle = await hasCycle(dependsOnTaskId, taskId, tx);
+    if (cycle) throw new AppError("Circular dependency detected", 400);
+
+    // 4. Create Link
+    await tx.taskDependency.create({
+      data: { predecessorId: dependsOnTaskId, successorId: taskId },
+    });
+
+    // 5. Audit Log
+    await logAuditEvent({
+      workspaceId,
+      userId,
+      taskId,
+      action: "DEPENDENCY_ADDED",
+      metadata: { dependsOnTaskId, predecessorTitle: dependsOnTask.title },
+    }, tx);
   });
 };
 
 /**
- * Get dependencies
+ *Remove Task Dependency
+ */
+export const removeDependencyService = async (
+  workspaceId: string,
+  taskId: string,
+  dependsOnTaskId: string,
+  userId: string
+) => {
+  return prisma.$transaction(async (tx) => {
+    await tx.taskDependency.delete({
+      where: {
+        predecessorId_successorId: {
+          predecessorId: dependsOnTaskId,
+          successorId: taskId,
+        },
+      },
+    }).catch(() => { throw new AppError("Dependency link not found", 404); });
+
+    await logAuditEvent({
+      workspaceId,
+      userId,
+      taskId,
+      action: "DEPENDENCY_REMOVED",
+      metadata: { dependsOnTaskId },
+    }, tx);
+  });
+};
+
+/**
+ * Get Task Dependencies
+ * Logic: Returns lists of blockers (predecessors) and blocked tasks (successors).
  */
 export const getDependenciesService = async (taskId: string) => {
-  const predecessors = await prisma.taskDependency.findMany({
-    where: { successorId: taskId },
-    include: { predecessor: true },
+  // 1. Verify task exists and isn't deleted
+  const task = await prisma.task.findUnique({
+    where: { id: taskId, deletedAt: null }
   });
 
-  const successors = await prisma.taskDependency.findMany({
-    where: { predecessorId: taskId },
-    include: { successor: true },
-  });
+  if (!task) throw new AppError("Task not found", 404);
 
-  const isBlocked = predecessors.some(
-    (p) => p.predecessor.status !== "COMPLETED"
-  );
+  // 2. Fetch predecessors and successors in parallel
+  const [predecessors, successors] = await Promise.all([
+    prisma.taskDependency.findMany({
+      where: { successorId: taskId },
+      include: { 
+        predecessor: { 
+          select: { id: true, title: true, status: true, priority: true } 
+        } 
+      },
+    }),
+    prisma.taskDependency.findMany({
+      where: { predecessorId: taskId },
+      include: { 
+        successor: { 
+          select: { id: true, title: true, status: true, priority: true } 
+        } 
+      },
+    }),
+  ]);
+
+  // 3. Logic: Is the current task blocked?
+  const isBlocked = predecessors.some((p) => p.predecessor.status !== "COMPLETED");
 
   return {
-    predecessors: predecessors.map((p) => p.predecessor),
-    successors: successors.map((s) => s.successor),
+    blockingMe: predecessors.map((p) => p.predecessor), // Tasks I am waiting for
+    waitingOnMe: successors.map((s) => s.successor),   // Tasks waiting for me
     isBlocked,
   };
 };
 
-
-export const getCriticalPath = async () => {
-  const deps = await prisma.taskDependency.findMany();
-
-  const graph = new Map<string, string[]>();
-
-  deps.forEach((d) => {
-    if (!graph.has(d.predecessorId)) {
-      graph.set(d.predecessorId, []);
-    }
-    graph.get(d.predecessorId)!.push(d.successorId);
+/**
+ * Get Critical Path
+ * Logic: Finds the longest chain of dependencies in the system.
+ */
+export const getCriticalPath = async (workspaceId: string) => {
+  const deps = await prisma.taskDependency.findMany({
+    where: { predecessor: { workspaceId, deletedAt: null } }
   });
 
-  let longest: string[] = [];
+  const graph = new Map<string, string[]>();
+  deps.forEach((d) => {
+    const list = graph.get(d.predecessorId) || [];
+    list.push(d.successorId);
+    graph.set(d.predecessorId, list);
+  });
 
-  const dfs = (node: string, path: string[]) => {
-    path.push(node);
+  let longestPath: string[] = [];
 
-    if (!graph.has(node)) {
-      if (path.length > longest.length) longest = [...path];
-    } else {
-      for (const next of graph.get(node)!) {
-        dfs(next, [...path]);
+  const memo = new Map<string, string[]>();
+
+  const findLongest = (node: string): string[] => {
+    if (memo.has(node)) return memo.get(node)!;
+    
+    let subLongest: string[] = [];
+    const neighbors = graph.get(node) || [];
+    
+    for (const neighbor of neighbors) {
+      const path = findLongest(neighbor);
+      if (path.length > subLongest.length) {
+        subLongest = path;
       }
     }
+
+    const result = [node, ...subLongest];
+    memo.set(node, result);
+    return result;
   };
 
-  for (const key of graph.keys()) {
-    dfs(key, []);
+  for (const nodeId of graph.keys()) {
+    const currentPath = findLongest(nodeId);
+    if (currentPath.length > longestPath.length) {
+      longestPath = currentPath;
+    }
   }
 
-  return longest;
+  return longestPath;
 };

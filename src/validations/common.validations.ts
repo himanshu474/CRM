@@ -1,8 +1,6 @@
-import { z } from "zod";
+// src/validations/common.validations.ts
 
-/**
- * Common reusable validation blocks
- */
+import { z } from "zod";
 
 export const emailSchema = z
   .string()
@@ -30,7 +28,18 @@ export const nameSchema = (min = 2, max = 50) =>
 export const cuidSchema = (field: string) =>
   z.string().cuid(`Invalid ${field}`);
 
+export const optionalCuid = (field: string) =>
+  z.string().cuid(`Invalid ${field}`).optional().nullable();
+
 export const paginationSchema = z.object({
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(10),
 });
+
+export const searchSchema = z.object({
+  search: z.string().min(1).max(100).optional(),
+});
+
+export const phoneSchema=z.string()
+.regex(/^\+?[1-9]\d{1,14}$/, "Invalid phone number")
+.max(20)

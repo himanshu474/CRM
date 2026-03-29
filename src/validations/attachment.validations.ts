@@ -4,7 +4,7 @@ import { cuidSchema } from "./common.validations.js";
 export const uploadAttachmentSchema = z.object({
   params: z.object({
     workspaceId: cuidSchema("Workspace ID"),
-    taskId: cuidSchema("Task ID"),
+    taskId: cuidSchema("Task IaD"),
   }).strict(),
 });
 

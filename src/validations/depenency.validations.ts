@@ -6,16 +6,21 @@ export const addDependencySchema = z.object({
     workspaceId: cuidSchema("Workspace ID"),
     taskId: cuidSchema("Task ID"),
     dependsOnTaskId: cuidSchema("Depends On Task"),
-  }),
+  }).strict(),
 });
 
+export const removeDependencySchema = addDependencySchema;
 
-export const removeDependencySchema=addDependencySchema
+export const getDependencySchema = z.object({
+  params: z.object({
+    workspaceId: cuidSchema("Workspace ID"),
+    taskId: cuidSchema("Task ID"),
+  }).strict(),
+});
 
-
-export const getDependencySchema=z.object({
-  params:z.object({
-    workspaceId:cuidSchema("Workspace ID"),
-    taskId:cuidSchema("Task ID"),
-  })
-})
+// ✅ Added for Workspace-level Critical Path
+export const workspaceIdParamSchema = z.object({
+  params: z.object({
+    workspaceId: cuidSchema("Workspace ID"),
+  }).strict(),
+});

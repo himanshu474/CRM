@@ -8,7 +8,7 @@ import {
 } from "../controllers/project.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import { authorize } from "../middlewares/access.middleware.js";
-import { validate } from "../middlewares/validate.js";
+import { validate } from "../middlewares/validate.middleware.js";
 import {
   createProjectSchema,
   updateProjectSchema, // Added for the PATCH route

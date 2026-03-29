@@ -14,31 +14,28 @@ const REFRESH_TOKEN_EXPIRY: SignOptions["expiresIn"] = "7d";
  * Generate Access Token
  */
 export const generateAccessToken = (user: TokenUser): string => {
-  // Payload interface 'JwtPayload' ke mutabik hai
   const payload: JwtPayload = {
-    sub: user.id,
-    tv: user.tokenVersion,
+    sub: user.sub, // Changed from user.id to user.sub
+    tv: user.tv,   // Changed from user.tokenVersion to user.tv
   };
 
   return jwt.sign(payload, ACCESS_TOKEN_SECRET, {
     expiresIn: ACCESS_TOKEN_EXPIRY,
   });
 };
-
 /**
  * Generate Refresh Token
  */
 export const generateRefreshToken = (user: TokenUser): string => {
   const payload: JwtPayload = {
-    sub: user.id,
-    tv: user.tokenVersion,
+    sub: user.sub, // Changed from user.id to user.sub
+    tv: user.tv,   // Changed from user.tokenVersion to user.tv
   };
 
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, {
     expiresIn: REFRESH_TOKEN_EXPIRY,
   });
 };
-
 /**
  * Verify Tokens with explicit return type
  */

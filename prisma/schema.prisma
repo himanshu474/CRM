@@ -113,7 +113,9 @@ model Company {
   contacts Contact[]
   deals    Deal[]
 
+  @@index([workspaceId,ownerId])
   @@index([workspaceId])
+  @@index([deletedAt])
 }
 
 model Contact {
@@ -136,13 +138,15 @@ model Contact {
   deals Deal[]
   tasks Task[]
 
-  @@index([workspaceId])
+  @@index([workspaceId,ownerId])
+  @@index([workspaceId,email])
+  @@index([deletedAt])
 }
 
 model Deal {
   id          String     @id @default(cuid())
   title       String
-  value       Float?
+  value       Decimal?
   status      LeadStatus @default(NEW)
 
   workspaceId String
@@ -163,7 +167,9 @@ model Deal {
   tasks        Task[]
   activityLogs ActivityLog[]
 
-  @@index([workspaceId])
+  @@index([workspaceId,status])
+  @@index([workspaceId,ownerId])
+  @@index([deletedAt])
 }
 
 // --- Token & Utility Models ---
@@ -252,6 +258,7 @@ model Project {
 
   @@index([workspaceId])
   @@index([ownerId])
+  @@index([deletedAt])
 }
 
 model Task {
@@ -295,6 +302,8 @@ model Task {
   @@index([workspaceId])
   @@index([projectId])
   @@index([status])
+  @@index([dealId])
+  @@index([contactId])
   @@index([deletedAt])
 }
 
@@ -330,6 +339,7 @@ model Attachment {
   uploader  User?     @relation(fields: [uploadedBy], references: [id], onDelete: SetNull)
 
   @@index([taskId])
+  @@index([deletedAt])
 }
 
 model ActivityLog {
@@ -351,4 +361,7 @@ model ActivityLog {
 
   @@index([workspaceId])
   @@index([createdAt])
+  @@index([dealId])
+  @@index([taskId])
+  
 }

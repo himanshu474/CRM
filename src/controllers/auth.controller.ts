@@ -1,7 +1,8 @@
 import { Response } from "express";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { asyncHandler } from "../utils/common/asyncHandler.js";
 import { AuthService } from "../services/auth.service.js";
 import { Req } from "../types/express.js";
+import { AppError } from "../utils/AppError.js";
 
 
 const cookieOptions = {
@@ -46,8 +47,11 @@ export const getMe = asyncHandler(async (req: Req, res: Response) => {
 
 export const refresh = asyncHandler(async (req: Req, res: Response) => {
   const token = req.cookies.refreshToken;
+    if (!token) throw new AppError("Session expired, please login again", 401);
+
 
   const result = await AuthService.refresh(req, token);
+
 
   res.cookie("refreshToken", result.refreshToken, cookieOptions);
 
@@ -59,9 +63,10 @@ export const refresh = asyncHandler(async (req: Req, res: Response) => {
 });
 
 export const logout = asyncHandler(async (req: Req, res: Response) => {
-  const token = req.cookies.refreshToken;
+   const token = req.cookies.refreshToken;
 
-  await AuthService.logout(token);
+  // FIX: Passing both userId and token as required by AuthService
+  await AuthService.logout(req.user!.id, token);
 
   res.clearCookie("refreshToken", cookieOptions);
 
@@ -92,6 +97,9 @@ export const changePassword = asyncHandler(async (req: Req, res: Response) => {
     currentPassword,
     newPassword
   );
+
+    res.clearCookie("refreshToken", cookieOptions);
+
 
   res.json({
     success: true,

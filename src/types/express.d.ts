@@ -1,15 +1,21 @@
 import { ParamsDictionary } from "express-serve-static-core";
-import { User, WorkspaceMember, Project } from "@prisma/client";
+import { User, WorkspaceMember, Project, Company, Contact, Deal } from "@prisma/client";
+import { Request as ExpressRequest } from "express";
 
 /**
- * 1. Extend ParamsDictionary to satisfy Express's internal requirements
+ * 1. Extend Params Dictionary
+ * Added CRM IDs: companyId, contactId, dealId
  */
 export interface CustomParams extends ParamsDictionary {
-  workspaceId?: string;
-  projectId?: string;
-  taskId?: string;
-  dependsOnTaskId?: string;
-    attachmentId?: string; a
+  workspaceId: string;
+  projectId: string;
+  taskId: string;
+  dependsOnTaskId: string;
+  attachmentId?: string;
+  // CRM Specific Paramss
+  companyId?: string;
+  contactId?: string;
+  dealId?: string;
 }
 
 /**
@@ -27,14 +33,15 @@ declare global {
       };
       membership?: WorkspaceMember;
       project?: Project;
+      // Optional: Add CRM objects if your middleware fetches them
+      company?: Company;
+      contact?: Contact;
+      deal?: Deal;
     }
   }
 }
 
 /**
- * 3. THE MAIN TYPE (Used in Controllers)
- * We use 'any' as the default for Body (B) and Query (Q) 
- * unless you provide a specific Zod type.
+ * 3. THE MAIN TYPE
  */
-import { Request as ExpressRequest } from "express";
 export type Req<B = any, Q = any> = ExpressRequest<CustomParams, any, B, Q>;

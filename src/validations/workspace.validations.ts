@@ -14,7 +14,7 @@ export const createWorkspaceSchema = z.object({
 export const workspaceIdParamSchema = z.object({
   params: z.object({
     workspaceId: cuidSchema("Workspace ID"),
-  }),
+  }).strict(),
 });
 
 export const inviteMemberSchema = z.object({

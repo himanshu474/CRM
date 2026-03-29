@@ -12,6 +12,13 @@ export const CompanyService = {
     });
   },
 
+   async getAll(workspaceId: string) {
+    return prisma.company.findMany({
+      where: { workspaceId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+    });
+  },
+
   async update(companyId: string, workspaceId: string, data: any) {
     const company = await prisma.company.findFirst({
       where: { id: companyId, workspaceId, deletedAt: null },
@@ -27,7 +34,7 @@ export const CompanyService = {
 
   async delete(companyId: string, workspaceId: string) {
     const company = await prisma.company.findFirst({
-      where: { id: companyId, workspaceId },
+      where: { id: companyId, workspaceId,deletedAt:null},
     });
 
     if (!company) throw new AppError("Company not found", 404);

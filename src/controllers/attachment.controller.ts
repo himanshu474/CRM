@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { Req } from "../types/express.js"; // Ensure this path matches your Req type definition
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { asyncHandler } from "../utils/common/asyncHandler.js";
 import { AppError } from "../utils/AppError.js";
 import { AttachmentService } from "../services/attachment.service.js";
 

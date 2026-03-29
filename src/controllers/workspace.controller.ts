@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../config/prisma.js";
-import { asyncHandler } from "../utils/asyncHandler.js";
+import { asyncHandler } from "../utils/common/asyncHandler.js";
 import { AppError } from "../utils/AppError.js";
 import { WorkspaceRole } from "@prisma/client";
 import { Req } from "../types/express.js"

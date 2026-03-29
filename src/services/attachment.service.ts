@@ -1,6 +1,6 @@
+import { supabaseClient } from './../config/supabase.js';
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
-import { supabase } from "../config/supabase.js";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { logAuditEvent } from "../utils/security/audit.utils.js";
@@ -23,7 +23,7 @@ export const AttachmentService = {
     const storagePath = `${workspaceId}/${task.projectId}/${taskId}/${uuidv4()}${ext}`;
 
     // 3. Supabase Upload
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabaseClient.storage
       .from("Attachments")
       .upload(storagePath, file.buffer, { 
         contentType: file.mimetype,
@@ -33,12 +33,12 @@ export const AttachmentService = {
     if (uploadError) throw new AppError(`Upload failed: ${uploadError.message}`, 500);
 
     // 4. Generate Signed URL (valid for 1 hour)
-    const { data: signedUrlData, error: urlError } = await supabase.storage
+    const { data: signedUrlData, error: urlError } = await supabaseClient.storage
       .from("Attachments")
       .createSignedUrl(storagePath, 3600);
 
     if (urlError || !signedUrlData?.signedUrl) {
-      await supabase.storage.from("Attachments").remove([storagePath]); // Cleanup orphans
+      await supabaseClient.storage.from("Attachments").remove([storagePath]); // Cleanup orphans
       throw new AppError("Failed to generate file access URL", 500);
     }
 
@@ -108,7 +108,7 @@ export const AttachmentService = {
     }
 
     // Storage Removal
-    await supabase.storage.from("Attachments").remove([attachment.storagePath]);
+    await supabaseClient.storage.from("Attachments").remove([attachment.storagePath]);
 
     // Soft Delete
     await prisma.attachment.update({

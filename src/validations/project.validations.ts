@@ -5,7 +5,7 @@ import { nameSchema, cuidSchema } from "./common.validations.js";
 export const workspaceIdParamSchema = z.object({
   params: z.object({
     workspaceId: cuidSchema("Workspace ID"),
-  }),
+  }).strict(),
 });
 
 export const createProjectSchema = z.object({
@@ -37,5 +37,5 @@ export const projectIdParamSchema = z.object({
   params: z.object({
     workspaceId: cuidSchema("Workspace ID"),
     projectId: cuidSchema("Project ID"),
-  }),
+  }).strict(),
 });

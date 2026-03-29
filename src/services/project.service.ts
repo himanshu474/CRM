@@ -1,6 +1,6 @@
 import prisma from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
-import { WorkspaceRole } from "@prisma/client";
+// import { WorkspaceRole } from "@prisma/client";
 import { logAuditEvent } from "../utils/security/audit.utils.js";
 
 export const ProjectService = {
