@@ -53,6 +53,7 @@ model User {
 
   // Core Relationships
   membership      WorkspaceMember[]
+  notifications Notification[]    // <--- REQUIRED FOR SERVICE
   ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
   ownedProjects   Project[]         @relation("ProjectOwner")
   
@@ -92,6 +93,35 @@ model Session {
   @@index([userId, expiresAt])
   @@index([tokenHash])
 }
+
+model Notification {
+  id          String    @id @default(cuid())
+  userId      String
+  workspaceId String
+  type        String   
+  message     String
+  metadata    Json      @default("{}")
+  isRead      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime? // Soft delete timestamp
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  // 🔥 OPTIMIZED INDEXES 🔥
+  
+  // 1. The "Inbox" Index: Fetching unread notifications for a user in a workspace
+  // Compound index on [userId, workspaceId, deletedAt] is vital for performance
+  @@index([userId, workspaceId, deletedAt])
+
+  // 2. The "Red Dot" Index: Quick count of unread items
+  // Adding isRead here makes the count query almost instantaneous
+  @@index([userId, isRead, deletedAt])
+
+  // 3. The "Retention" Index: Used by Cron jobs to clean up old data
+  @@index([createdAt])
+}
+
 
 // --- CRM Models ---
 
@@ -215,6 +245,8 @@ model Workspace {
   tasks        Task[]
   activityLogs ActivityLog[]
   attachments  Attachment[]
+  anotifications Notification[]    // <--- REQUIRED FOR SERVICE
+
 
   // CRM Workspace Collections
   companies   Company[]

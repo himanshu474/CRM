@@ -6,77 +6,74 @@ import {
   addDependencyService,
   removeDependencyService,
   getDependenciesService,
-  getCriticalPath 
+  getCriticalPath,
 } from "../services/dependency.service.js";
 
-/**
- *  Permission Helper
- */
-const validateAccess = (req: Req) => {
-  if (!req.membership || !["ADMIN", "MEMBER"].includes(req.membership.role)) {
-    throw new AppError("Insufficient permissions to modify dependencies", 403);
+// ─────────────────────────────────────────────
+// Permission guard
+// ─────────────────────────────────────────────
+
+const assertRole = (req: Req, roles = ["ADMIN", "MEMBER"]) => {
+  if (!req.membership || !roles.includes(req.membership.role)) {
+    throw new AppError("Insufficient permissions", 403);
   }
 };
 
-// ================= ADD DEPENDENCY =================
+// ─────────────────────────────────────────────
+// ADD DEPENDENCY
+// ─────────────────────────────────────────────
+
 export const addDependency = asyncHandler(async (req: Req, res: Response) => {
-  validateAccess(req); // Added missing permission check
+  assertRole(req);
 
   const { workspaceId, taskId, dependsOnTaskId } = req.params;
 
-  await addDependencyService(
-    workspaceId,
-    taskId,
-    dependsOnTaskId,
-    req.user!.id
-  );
+  await addDependencyService(workspaceId, taskId, dependsOnTaskId, req.user!.id);
 
   res.status(201).json({ success: true, message: "Dependency added" });
 });
 
-// ================= REMOVE DEPENDENCY =================
+// ─────────────────────────────────────────────
+// REMOVE DEPENDENCY
+// ─────────────────────────────────────────────
+
 export const removeDependency = asyncHandler(async (req: Req, res: Response) => {
-  validateAccess(req); // Added missing permission check
+  assertRole(req);
 
   const { workspaceId, taskId, dependsOnTaskId } = req.params;
 
-  await removeDependencyService(
-    workspaceId,
-    taskId,
-    dependsOnTaskId,
-    req.user!.id
-  );
+  await removeDependencyService(workspaceId, taskId, dependsOnTaskId, req.user!.id);
 
-  res.json({ success: true, message: "Dependency removed" });
+  res.status(200).json({ success: true, message: "Dependency removed" });
 });
 
-// ================= GET TASK DEPENDENCIES =================
+// ─────────────────────────────────────────────
+// GET TASK DEPENDENCIES
+// ─────────────────────────────────────────────
 
 export const getDependencies = asyncHandler(async (req: Req, res: Response) => {
-  const { taskId } = req.params; // TypeScript knows this is a string
+  assertRole(req); // ✅ was missing — any authenticated user could read any task's deps
 
-  const data = await getDependenciesService(taskId);
+  const { workspaceId, taskId } = req.params; // ✅ workspaceId was missing entirely
+
+  const data = await getDependenciesService(taskId, workspaceId); // ✅ pass workspaceId
+
+  res.status(200).json({ success: true, data });
+});
+
+// ─────────────────────────────────────────────
+// GET CRITICAL PATH
+// ─────────────────────────────────────────────
+
+export const getProjectCriticalPath = asyncHandler(async (req: Req, res: Response) => {
+  assertRole(req); // ✅ was missing — open to any authenticated user
+
+  const { workspaceId } = req.params;
+
+  const path = await getCriticalPath(workspaceId);
 
   res.status(200).json({
     success: true,
-    data,
-  });
-});
-
-
-// ================= GET CRITICAL PATH =================
-/**
- * New Controller: Fetches the longest chain of tasks
- * Typically used on a Project Dashboard.
- */
-export const getProjectCriticalPath = asyncHandler(async (req: Req, res: Response) => {
-  const { workspaceId } = req.params;
-  
-  const path = await getCriticalPath(workspaceId);
-
-  res.json({
-    success: true,
-    data: path,
-    message: "Longest dependency chain fetched"
+    data: { path, length: path.length }, // ✅ include length — useful for frontend without extra .length call
   });
 });

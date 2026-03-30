@@ -1,122 +1,89 @@
-import { Request, Response } from "express";
-import prisma from "../config/prisma.js";
+import { Response } from "express";
 import { asyncHandler } from "../utils/common/asyncHandler.js";
-import { AppError } from "../utils/AppError.js";
+import { WorkspaceService } from "../services/workspace.service.js";
+import { Req } from "../types/express.js";
 import { WorkspaceRole } from "@prisma/client";
-import { Req } from "../types/express.js"
+import { AppError } from "../utils/AppError.js";
 
-export const createWorkspace = asyncHandler(async (req: Request, res: Response) => {
-    const { name} = req.body;
-    const userId = req.user!.id;
+export const WorkspaceController = {
+  /**
+   * 🏗️ Create Workspace
+   */
+  create: asyncHandler(async (req: Req, res: Response) => {
+    const data = await WorkspaceService.create(req.user!.id, req.body.name);
 
-    const workspace = await prisma.workspace.create({
-        data: {
-            name,
-            owner:
-            {
-                connect:
-                    { id: userId }
-            }, // Relation way
-            members: {
-                create: {
-                    userId,
-                    role: WorkspaceRole.ADMIN,
-                    joinedAt: new Date(),
-                }
-            }
-        }
+    res.status(201).json({
+      success: true,
+      data,
     });
+  }),
 
-    res.status(201).json({ success: true, data: workspace });
-});
+  /**
+   * 📋 List My Workspaces
+   */
+  getMyWorkspaces: asyncHandler(async (req: Req, res: Response) => {
+    const data = await WorkspaceService.getMyWorkspaces(req.user!.id);
 
-export const getMyWorkspaces = asyncHandler(async (req: Request, res: Response) => {
-    const workspaces = await prisma.workspace.findMany({
-        where: {
-            deletedAt: null,
-            members: { some: { userId: req.user!.id } }
-        },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, name: true, createdAt: true }
+    res.json({
+      success: true,
+      data,
     });
+  }),
 
-    res.json({ success: true, count: workspaces.length, data: workspaces });
-});
-
-
-export const inviteMember = asyncHandler(async (req: Req, res: Response) => {
-    const { userId, role } = req.body;
-        const { workspaceId } = req.params; 
-
-    
-    
-    if (!req.membership || req.membership.role !== WorkspaceRole.ADMIN) {
-        throw new AppError("Forbidden: Only Admins can invite members", 403);
+  /**
+   * ✉️ Invite Member
+   * Note: We use targetEmail as SaaS best practice for invitations
+   */
+  inviteMember: asyncHandler(async (req: Req, res: Response) => {
+    // 🛡️ Guard: Only Admin can invite
+    if (req.membership?.role !== WorkspaceRole.ADMIN) {
+      throw new AppError("Forbidden: Admin access required to invite members", 403);
     }
 
+    const data = await WorkspaceService.inviteMember(
+      req.params.workspaceId!,
+      req.user!.id,
+      req.body.email, // Switched to email for production-readiness
+      req.body.role || WorkspaceRole.MEMBER
+    );
 
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new AppError("User not found in system", 404);
-
-    const existing = await prisma.workspaceMember.findUnique({
-        where: { workspaceId_userId: { workspaceId, userId } }
+    res.status(201).json({
+      success: true,
+      message: "Member invited successfully",
+      data,
     });
+  }),
 
-    if (existing) throw new AppError("User is already a member", 409);
+  /**
+   * 🗑️ Soft Delete Workspace
+   */
+  delete: asyncHandler(async (req: Req, res: Response) => {
+    // 🛡️ Guard: Only Admin/Owner can delete
+    if (req.membership?.role !== WorkspaceRole.ADMIN) {
+      throw new AppError("Forbidden: Admin access required", 403);
+    }
 
-    const newMember = await prisma.workspaceMember.create({
-        data: { workspaceId, userId, role: role || WorkspaceRole.MEMBER },
+    await WorkspaceService.delete(req.params.workspaceId!, req.user!.id);
+
+    res.json({
+      success: true,
+      message: "Workspace and related data moved to trash",
     });
+  }),
 
-    res.status(201).json({ success: true, data: newMember });
-});
+  /**
+   * ♻️ Restore Workspace
+   */
+  restore: asyncHandler(async (req: Req, res: Response) => {
+    if (req.membership?.role !== WorkspaceRole.ADMIN) {
+      throw new AppError("Forbidden: Admin access required", 403);
+    }
 
-export const deleteWorkspace = asyncHandler(async (req: Req, res: Response) => {
-    const { workspaceId } = req.params; 
-        const userId = req.user!.id;
+    await WorkspaceService.restore(req.params.workspaceId!, req.user!.id);
 
-    
-    if (!req.membership) throw new AppError("Authorization context missing", 500);
-    if (req.membership.role !== WorkspaceRole.ADMIN) throw new AppError("Admin required", 403);
-
-    const now = new Date();
-    await prisma.$transaction([
-        // Prisma now receives a string, not an object
-        prisma.workspace.update({ where: { id: workspaceId }, data: { deletedAt: now } }),
-        prisma.project.updateMany({ where: { workspaceId, deletedAt: null }, data: { deletedAt: now } }),
-        prisma.task.updateMany({ where: { workspaceId, deletedAt: null }, data: { deletedAt: now } }),
-         prisma.activityLog.create({
-            data: { workspaceId, action: "DELETE_WORKSPACE", userId }
-        })
-    ]);
-
-    res.json({ success: true, message: "Workspace moved to trash" });
-});
-
-export const restoreWorkspace = asyncHandler(async (req: Req, res: Response) => {
-    const { workspaceId } = req.params; 
-    const userId=req.user!.id
-
-    if (!req.membership) throw new AppError("Authorization context missing", 500);
-    if (req.membership.role !== WorkspaceRole.ADMIN) throw new AppError("Admin required", 403);
-
-    await prisma.$transaction([
-        prisma.workspace.update({ where: { id: workspaceId }, data: { deletedAt: null } }),
-         prisma.project.updateMany({ 
-            where: { workspaceId, deletedAt: { not: null } }, 
-            data: { deletedAt: null } 
-        }),
-        prisma.task.updateMany({ 
-            where: { workspaceId, deletedAt: { not: null } }, 
-            data: { deletedAt: null } 
-        }),
-        prisma.activityLog.create({
-            data: { workspaceId, action: "RESTORE_WORKSPACE", userId }
-        })
-    ]);
-
-    res.json({ success: true, message: "Workspace restored successfully" });
-});
-
-
-
+    res.json({
+      success: true,
+      message: "Workspace restored successfully",
+    });
+  }),
+};
