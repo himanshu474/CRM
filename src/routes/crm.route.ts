@@ -37,3 +37,8 @@ router.patch("/deals/:dealId", validate(updateDealSchema), CRMController.updateD
 router.delete("/deals/:dealId", validate(deleteDealSchema), CRMController.deleteDeal);
 
 export default router;
+
+
+
+
+

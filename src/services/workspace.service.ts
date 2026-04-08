@@ -6,7 +6,7 @@ import { NotificationService } from "./notification.service.js";
 
 export const WorkspaceService = {
   /**
-   * Create Workspace
+   * Create Workspaces
    * Uses a transaction to ensure User is linked and Admin member is created.
    */
   async create(userId: string, name: string) {

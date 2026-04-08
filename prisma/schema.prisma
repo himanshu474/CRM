@@ -38,6 +38,18 @@ enum LeadStatus {
   LOST
 }
 
+enum PaymentProvider {
+  STRIPE
+  RAZORPAY
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
 // --- Auth Models ---
 
 model User {
@@ -108,7 +120,7 @@ model Notification {
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
 
-  // 🔥 OPTIMIZED INDEXES 🔥
+  //OPTIMIZED INDEXES
   
   // 1. The "Inbox" Index: Fetching unread notifications for a user in a workspace
   // Compound index on [userId, workspaceId, deletedAt] is vital for performance
@@ -196,6 +208,8 @@ model Deal {
 
   tasks        Task[]
   activityLogs ActivityLog[]
+  payments     Payment[]
+
 
   @@index([workspaceId,status])
   @@index([workspaceId,ownerId])
@@ -245,13 +259,15 @@ model Workspace {
   tasks        Task[]
   activityLogs ActivityLog[]
   attachments  Attachment[]
-  anotifications Notification[]    // <--- REQUIRED FOR SERVICE
+  notifications Notification[]    // <--- REQUIRED FOR SERVICE
 
 
   // CRM Workspace Collections
   companies   Company[]
   contacts    Contact[]
   deals       Deal[]
+  payments    Payment[]
+
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -396,4 +412,31 @@ model ActivityLog {
   @@index([dealId])
   @@index([taskId])
   
+}
+
+// ─── Payment Models ───────────────────────────
+
+model Payment {
+  id                String          @id @default(cuid())
+  workspaceId       String
+  dealId            String?
+  amount            Decimal
+  currency          String          @default("INR")
+  status            PaymentStatus   @default(PENDING)
+  provider          PaymentProvider
+  providerPaymentId String?         @unique
+  providerOrderId   String?
+  receipt           String?
+  notes             String?
+  metadata          Json?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  deal      Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([dealId])
+  @@index([status])
+  @@index([providerPaymentId])
 }

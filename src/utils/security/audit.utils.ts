@@ -19,7 +19,7 @@ export const logAuditEvent = async (
     return await client.activityLog.create({
       data: {
         // Ensure workspaceId is handled (your schema says it's required)
-        workspaceId: data.workspaceId || "", 
+        workspaceId: data.workspaceId || "system", 
         userId: data.userId,
         taskId: data.taskId || null,
         dealId: data.dealId || null, 

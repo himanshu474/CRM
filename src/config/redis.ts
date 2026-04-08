@@ -1,12 +1,9 @@
+// src/config/redis.ts
 import { createClient } from "redis";
 import { Redis } from "ioredis";
 
 const redisUrl = process.env.REDIS_URL;
 
-// ✅ Fail fast at startup if Redis URL is missing — don't silently disable
-// caching and queues, which leads to hard-to-debug production issues.
-// If you genuinely want Redis to be optional, keep the warn but make every
-// consumer check for null before using redisClient / bullConnection.
 if (!redisUrl) {
   throw new Error(
     "REDIS_URL environment variable is not set. " +
@@ -24,55 +21,61 @@ export const redisClient = createClient({
     connectTimeout: 10000,
     reconnectStrategy: (retries) => {
       if (retries > 10) {
-        console.error("❌ Redis: Max reconnection attempts reached. Giving up.");
-        return new Error("Redis reconnection failed after 10 attempts");
+        console.error("Redis: Max reconnection attempts reached. Giving up.");
+        return false;
       }
       const delay = Math.min(retries * 100, 3000);
-      console.warn(`⚠️  Redis: Reconnecting in ${delay}ms (attempt ${retries})...`);
+      console.warn(`Redis: Reconnecting in ${delay}ms (attempt ${retries})...`);
       return delay;
     },
   },
 });
 
-redisClient.on("error",        (err) => console.error("❌ Redis Cache Error:", err));
-redisClient.on("ready",        ()    => console.log("✅ Redis Cache: Ready"));
-redisClient.on("reconnecting", ()    => console.warn("⚠️  Redis Cache: Reconnecting..."));
-// ✅ Added 'end' event — fires when Redis gives up reconnecting entirely
-redisClient.on("end",          ()    => console.error("❌ Redis Cache: Connection closed permanently"));
+redisClient.on("error",        (err) => console.error("Redis Cache Error:", err));
+redisClient.on("ready",        ()    => console.log("Redis Cache: Ready"));
+redisClient.on("reconnecting", ()    => console.warn("Redis Cache: Reconnecting..."));
+redisClient.on("end",          ()    => console.error("Redis Cache: Connection closed permanently"));
 
 // ─────────────────────────────────────────────
-// 2. IORedis Client (BullMQ — requires ioredis + maxRetriesPerRequest: null)
+// 2. BullMQ Connection Factory
+// Each Queue and Worker must get its own ioredis instance.
+// Sharing one connection across multiple BullMQ consumers causes
+// "connection already subscribed" errors at runtime.
 // ─────────────────────────────────────────────
 
-export const bullConnection = new Redis(redisUrl, {
-  maxRetriesPerRequest: null,   // ✅ Required by BullMQ — do not change
-  connectTimeout:       10000,
-  enableReadyCheck:     false,  // ✅ Required by BullMQ — prevents startup race condition
-  // ✅ lazyConnect: true — don't connect until first command is issued.
-  // Without this, the process crashes at import time if Redis is temporarily down.
-  lazyConnect:          true,
-});
-
-bullConnection.on("error",   (err) => console.error("❌ BullMQ Redis Error:", err));
-bullConnection.on("ready",   ()    => console.log("✅ BullMQ Redis: Ready"));
-bullConnection.on("close",   ()    => console.warn("⚠️  BullMQ Redis: Connection closed"));
+export const createBullConnection = (): Redis =>
+  new Redis(redisUrl!, {
+    maxRetriesPerRequest: null,  // Required by BullMQ — do not change
+    connectTimeout:       10000,
+    enableReadyCheck:     false, // Required by BullMQ — prevents startup race condition
+    lazyConnect:          true,  // Do not crash at import if Redis is briefly unavailable
+  });
 
 // ─────────────────────────────────────────────
-// connectRedis — call once from server entry point
+// 3. connectRedis — call once from server.ts at startup
 // ─────────────────────────────────────────────
 
 export const connectRedis = async (): Promise<void> => {
-  // node-redis requires explicit .connect()
-  if (!redisClient.isOpen) {
-    await redisClient.connect();
+  try {
+    if (!redisClient.isOpen) {
+      await redisClient.connect();
+    }
+  } catch (err) {
+    throw new Error(`Redis cache connection failed: ${err}`);
   }
 
-  // ioredis connects lazily — explicitly connect so we know it's ready at startup
-  if (bullConnection.status === "wait" || bullConnection.status === "close") {
-    await bullConnection.connect();
-  }
+  console.log("Redis: All connections established");
+};
 
-  console.log("✅ Redis: All connections established");
+// ─────────────────────────────────────────────
+// 4. disconnectRedis — call from server.ts graceful shutdown handler
+// Without this the process hangs for several seconds on SIGTERM
+// because node-redis keeps its socket open.
+// ─────────────────────────────────────────────
+
+export const disconnectRedis = async (): Promise<void> => {
+  await redisClient.quit();
+  console.log("Redis: All connections closed");
 };
 
 export default redisClient;

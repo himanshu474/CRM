@@ -19,7 +19,7 @@ const router = Router();
 // ─────────────────────────────────────────────
 
 router.post("/register",
-  strictLimiter, // ✅ stricter than authLimiter — 5/hr vs 10/15min
+  strictLimiter, // stricter than authLimiter — 5/hr vs 10/15min
   validate(registerSchema),
   AuthController.register
 );
@@ -35,11 +35,11 @@ router.post("/refresh",
   AuthController.refresh
 );
 
-// ✅ GET — email link clicks are GET requests, not POST
+//  GET — email link clicks are GET requests, not POST
 router.get("/verify-email",   AuthController.verifyEmail);
 
 router.post("/resend-verification",
-  strictLimiter, // ✅ email flooding prevention
+  strictLimiter, // email flooding prevention
   validate(resendVerificationSchema),
   AuthController.resendVerification
 );

@@ -15,7 +15,7 @@ export interface CustomParams extends ParamsDictionary {
   // CRM Specific Paramss
   companyId?: string;
   contactId?: string;
-  dealId?: string;
+  dealId: string;
 }
 
 /**

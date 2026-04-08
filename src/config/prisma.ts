@@ -56,7 +56,6 @@ if (!global.prismaGlobal) {
  */
 export const connectDB = async () => {
   let retries = MAX_RETRIES;
-
   while (retries > 0) {
     try {
       await prisma.$connect();
@@ -65,13 +64,10 @@ export const connectDB = async () => {
     } catch (error) {
       retries--;
       console.error(`DB connection failed. Retries left: ${retries}`);
-
       if (retries === 0) {
         console.error("All DB connection retries exhausted. Shutting down...");
         throw error;
       }
-
-      // Wait before trying again
       await new Promise((res) => setTimeout(res, RETRY_DELAY));
     }
   }

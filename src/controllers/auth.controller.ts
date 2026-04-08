@@ -56,7 +56,7 @@ export const AuthController = {
   }),
 
   verifyEmail: asyncHandler(async (req: Req, res: Response) => {
-    // ✅ Token comes from query param (?token=...) from the email link
+    //  Token comes from query param (?token=...) from the email link
     const { token } = req.query as { token: string };
     if (!token) throw new AppError("Verification token is required", 400);
 
@@ -166,7 +166,7 @@ export const AuthController = {
 
     await AuthService.changePassword(req.user!.id, currentPassword, newPassword);
 
-    // ✅ Clear cookie — all sessions revoked in service, current device should re-login
+    // Clear cookie — all sessions revoked in service, current device should re-login
     res.clearCookie("refreshToken", clearOptions);
 
     res.status(200).json({

@@ -74,6 +74,13 @@ export const globalErrorHandler = (
     });
   }
 
+   if (err.type === "StripeSignatureVerificationError") {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid webhook signature.",
+    });
+  }
+
   // 7. Final Fallback
   return res.status(500).json({
     success: false,
